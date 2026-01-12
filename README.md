@@ -2,6 +2,8 @@
 
 A simple Neovim plugin to display statistics for your Obsidian vault.
 
+![obsidian-stats.nvim screenshot](assets/screenshot.png)
+
 ## Features
 
 - Total Notes count

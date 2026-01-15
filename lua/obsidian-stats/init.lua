@@ -82,6 +82,73 @@ function M.show_stats()
 		end
 	end
 
+	-- 3c. Weekly Activity (Last 7 Days)
+	local activity_cmd = "fd -e md . '" .. vault_path .. "' -X stat -f '%B'"
+	local activity_raw = vim.fn.system(activity_cmd)
+
+	local day_stats = {}
+	local today_ts = os.time()
+	local max_count = 0
+
+	-- Initialize last 7 days
+	for i = 6, 0, -1 do
+		local d = today_ts - (i * 86400)
+		local date_key = os.date("%Y-%m-%d", d)
+		local label = os.date("%a", d):sub(1, 1)
+		table.insert(day_stats, { date = date_key, label = label, count = 0 })
+	end
+
+	-- Populate counts
+	for ts in activity_raw:gmatch("[^\r\n]+") do
+		local t = tonumber(ts)
+		if t then
+			local date_str = os.date("%Y-%m-%d", t)
+			for _, day in ipairs(day_stats) do
+				if day.date == date_str then
+					day.count = day.count + 1
+					if day.count > max_count then
+						max_count = day.count
+					end
+					break
+				end
+			end
+		end
+	end
+
+	-- Generate Chart (Fixed height of 5 lines)
+	local graph_height = 5
+	local chart_lines = {}
+	for h = graph_height, 1, -1 do
+		local line = "    "
+		for _, day in ipairs(day_stats) do
+			local bar_height = 0
+			if max_count > 0 then
+				if max_count <= graph_height then
+					bar_height = day.count
+				else
+					bar_height = math.floor((day.count / max_count) * graph_height + 0.5)
+					-- Ensure at least 1 block if count > 0
+					if day.count > 0 and bar_height == 0 then
+						bar_height = 1
+					end
+				end
+			end
+
+			if bar_height >= h then
+				line = line .. "█ "
+			else
+				line = line .. "  " -- space for alignment
+			end
+		end
+		table.insert(chart_lines, line)
+	end
+
+	-- X-axis labels
+	local x_axis = "    "
+	for _, day in ipairs(day_stats) do
+		x_axis = x_axis .. day.label .. " "
+	end
+
 	-- 4. Top 3 Tags (Stripping file paths to prevent window overflow)
 	local tag_cmd = string.format(
 		"rg -o '#[a-zA-Z0-9_-]+' %s | awk -F: '{print $NF}' | sort | uniq -c | sort -nr | head -3",
@@ -100,8 +167,16 @@ function M.show_stats()
 		" 󰄾  Velocity:        " .. avg_per_day .. " notes/day",
 		" 󱓞  Current Streak:  " .. streak .. " days",
 		"",
-		" 󰓹  Top Tags:",
+		"   Weekly Activity:",
 	}
+
+	for _, line in ipairs(chart_lines) do
+		table.insert(stats, line)
+	end
+	table.insert(stats, x_axis)
+
+	table.insert(stats, "")
+	table.insert(stats, " 󰓹  Top Tags:")
 
 	-- Parse and format the tags
 	for line in top_tags:gmatch("[^\r\n]+") do

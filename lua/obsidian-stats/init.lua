@@ -9,7 +9,6 @@ M.config = {
 		days_active = true,
 		velocity = true,
 		streak = true,
-		top_tags = true,
 		weekly_chart = true,
 		tags = true,
 	},

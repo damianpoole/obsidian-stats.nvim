@@ -18,6 +18,10 @@ function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
 
+local function round(x)
+	return math.floor(x + 0.5)
+end
+
 function M.show_stats()
 	-- Path to your vault
 	local vault_path = vim.fn.expand(M.config.vault_path)
@@ -143,7 +147,7 @@ function M.show_stats()
 				if max_count <= graph_height then
 					bar_height = day.count
 				else
-					bar_height = math.floor((day.count / max_count) * graph_height + 0.5)
+					bar_height = round((day.count / max_count) * graph_height)
 					-- Ensure at least 1 block if count > 0
 					if day.count > 0 and bar_height == 0 then
 						bar_height = 1
@@ -174,10 +178,11 @@ function M.show_stats()
 	local top_tags = vim.fn.system(tag_cmd)
 
 	-- Build the lines for the UI
+	local separator = " -------------------"
 	local stats = {
 		"",
 		"   Vault Statistics",
-		" -------------------",
+		separator,
 	}
 
 	if sections.total_notes then
@@ -201,7 +206,9 @@ function M.show_stats()
 	end
 
 	if sections.weekly_chart then
-		table.insert(stats, "")
+		if stats[#stats] ~= separator then
+			table.insert(stats, "")
+		end
 		table.insert(stats, "   Weekly Activity:")
 
 		for _, line in ipairs(chart_lines) do
@@ -211,7 +218,9 @@ function M.show_stats()
 	end
 
 	if sections.tags then
-		table.insert(stats, "")
+		if stats[#stats] ~= separator then
+			table.insert(stats, "")
+		end
 		table.insert(stats, " 󰓹  Top Tags:")
 
 		-- Parse and format the tags

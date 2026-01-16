@@ -94,6 +94,13 @@ function M.show_stats()
 	end
 
 	-- 3c. Weekly Activity (Last 7 Days)
+	-- NOTE: We use file *birth* time (`stat -f '%B'`) here to approximate when notes were
+	-- "created". This reflects when the file appeared on the local filesystem, which may
+	-- differ from when the note was originally created in Obsidian (for example, if notes
+	-- are copied, synced from another device, restored from backup, or the vault is moved).
+	-- We prefer birth time over modification time so that later edits do not count as new
+	-- note creations, but this trade-off means the weekly activity chart can be inaccurate
+	-- in the above scenarios.
 	local activity_cmd = "fd -e md . '" .. vault_path .. "' -X stat -f '%B'"
 	local activity_raw = vim.fn.system(activity_cmd)
 

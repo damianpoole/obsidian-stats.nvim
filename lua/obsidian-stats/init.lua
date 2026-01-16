@@ -3,6 +3,16 @@ local M = {}
 M.config = {
 	-- Default path, can be overridden in setup()
 	vault_path = "~/vaults/second-brain",
+	sections = {
+		total_notes = true,
+		total_words = true,
+		days_active = true,
+		velocity = true,
+		streak = true,
+		top_tags = true,
+		weekly_chart = true,
+		tags = true,
+	},
 }
 
 function M.setup(opts)
@@ -12,6 +22,7 @@ end
 function M.show_stats()
 	-- Path to your vault
 	local vault_path = vim.fn.expand(M.config.vault_path)
+	local sections = M.config.sections
 
 	-- Ensure vault path exists
 	if vim.fn.isdirectory(vault_path) == 0 then
@@ -161,28 +172,48 @@ function M.show_stats()
 		"",
 		"   Vault Statistics",
 		" -------------------",
-		" 󰠮  Total Notes:     " .. total_notes,
-		" 󰓗  Total Words:     " .. total_words,
-		" 󰃭  Days Active:     " .. days_since,
-		" 󰄾  Velocity:        " .. avg_per_day .. " notes/day",
-		" 󱓞  Current Streak:  " .. streak .. " days",
-		"",
-		"   Weekly Activity:",
 	}
 
-	for _, line in ipairs(chart_lines) do
-		table.insert(stats, line)
+	if sections.total_notes then
+		table.insert(stats, " 󰠮  Total Notes:     " .. total_notes)
 	end
-	table.insert(stats, x_axis)
 
-	table.insert(stats, "")
-	table.insert(stats, " 󰓹  Top Tags:")
+	if sections.total_words then
+		table.insert(stats, " 󰓗  Total Words:     " .. total_words)
+	end
 
-	-- Parse and format the tags
-	for line in top_tags:gmatch("[^\r\n]+") do
-		local count, tag = line:match("%s*(%d+)%s*(#.*)")
-		if count and tag then
-			table.insert(stats, string.format("    %-4s %s", count .. "x", tag))
+	if sections.days_active then
+		table.insert(stats, " 󰃭  Days Active:     " .. days_since)
+	end
+
+	if sections.velocity then
+		table.insert(stats, " 󰄾  Velocity:        " .. avg_per_day .. " notes/day")
+	end
+
+	if sections.streak then
+		table.insert(stats, " 󱓞  Current Streak:  " .. streak .. " days")
+	end
+
+	if sections.weekly_chart then
+		table.insert(stats, "")
+		table.insert(stats, "   Weekly Activity:")
+
+		for _, line in ipairs(chart_lines) do
+			table.insert(stats, line)
+		end
+		table.insert(stats, x_axis)
+	end
+
+	if sections.tags then
+		table.insert(stats, "")
+		table.insert(stats, " 󰓹  Top Tags:")
+
+		-- Parse and format the tags
+		for line in top_tags:gmatch("[^\r\n]+") do
+			local count, tag = line:match("%s*(%d+)%s*(#.*)")
+			if count and tag then
+				table.insert(stats, string.format("    %-4s %s", count .. "x", tag))
+			end
 		end
 	end
 

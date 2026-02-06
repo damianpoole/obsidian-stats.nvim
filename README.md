@@ -28,6 +28,9 @@ A simple Neovim plugin to display statistics for your Obsidian vault.
 {
   "damianpoole/obsidian-stats.nvim",
   cmd = "ObsidianStats",
+  dependencies = {
+    "MunifTanjim/nui.nvim",
+  },
   opts = {
     vault_path = "~/vaults/second-brain", -- Update this path
   },

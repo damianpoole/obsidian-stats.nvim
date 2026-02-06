@@ -1,3 +1,5 @@
+local Popup = require("nui.popup")
+
 local M = {}
 
 M.config = {
@@ -239,27 +241,44 @@ function M.show_stats()
 			max_width = #line
 		end
 	end
-	local width = max_width + 4
-	local height = #stats + 2
+	local max_width_allowed = math.max(20, vim.o.columns - 4)
+	local max_height_allowed = math.max(8, vim.o.lines - 4)
+	local width = math.min(max_width + 4, max_width_allowed)
+	local height = math.min(#stats + 2, max_height_allowed)
 
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, stats)
-
-	vim.api.nvim_open_win(buf, true, {
-		relative = "editor",
-		width = width,
-		height = height,
-		col = (vim.o.columns - width) / 2,
-		row = (vim.o.lines - height) / 2,
-		style = "minimal",
-		border = "rounded",
-		title = " Obsidian Stats ",
-		title_pos = "center",
+	local popup = Popup({
+		enter = true,
+		focusable = true,
+		border = {
+			style = "rounded",
+			text = {
+				top = " Obsidian Stats ",
+				top_align = "center",
+				bottom = " q/esc to close ",
+				bottom_align = "center",
+			},
+		},
+		position = "50%",
+		size = {
+			width = width,
+			height = height,
+		},
 	})
 
+	popup:mount()
+	vim.api.nvim_buf_set_lines(popup.bufnr, 0, -1, false, stats)
+	vim.api.nvim_buf_set_option(popup.bufnr, "modifiable", false)
+	vim.api.nvim_buf_set_option(popup.bufnr, "bufhidden", "wipe")
+
+	local function close_popup()
+		if popup and popup.unmount then
+			popup:unmount()
+		end
+	end
+
 	-- Keymaps to close the window
-	vim.keymap.set("n", "q", "<cmd>q<cr>", { buffer = buf, silent = true })
-	vim.keymap.set("n", "<esc>", "<cmd>q<cr>", { buffer = buf, silent = true })
+	vim.keymap.set("n", "q", close_popup, { buffer = popup.bufnr, silent = true })
+	vim.keymap.set("n", "<esc>", close_popup, { buffer = popup.bufnr, silent = true })
 end
 
 return M

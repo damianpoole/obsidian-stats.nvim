@@ -14,20 +14,205 @@ M.config = {
 		weekly_chart = true,
 		tags = true,
 	},
+	heatmap = {
+		-- "3_months" (default), "6_months", "9_months", or "1_year"
+		range = "3_months",
+		-- "modified" (default), "created", or "both"
+		activity = "modified",
+	},
 }
 
 function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
 
-local function round(x)
-	return math.floor(x + 0.5)
+local HEATMAP_LEVELS = 4
+local HEATMAP_CHAR = "■"
+local HEATMAP_GROUP_PREFIX = "ObsidianStatsHeatmap"
+
+local function ensure_heatmap_highlights()
+	vim.api.nvim_set_hl(0, HEATMAP_GROUP_PREFIX .. "0", { link = "Comment", default = true })
+	local palette = { "#9be9a8", "#40c463", "#30a14e", "#216e39" }
+	for i, color in ipairs(palette) do
+		vim.api.nvim_set_hl(0, HEATMAP_GROUP_PREFIX .. i, { fg = color, default = true })
+	end
+end
+
+local function day_start(ts)
+	local t = os.date("*t", ts)
+	return os.time({ year = t.year, month = t.month, day = t.day })
+end
+
+local function resolve_heatmap_days(range, override_days)
+	if type(override_days) == "number" and override_days > 0 then
+		return override_days, "Last " .. override_days .. " Days"
+	end
+	if type(range) == "number" and range > 0 then
+		return range, "Last " .. range .. " Days"
+	end
+	if range == "3_months" then
+		return 90, "Last 3 Months"
+	end
+	if range == "6_months" then
+		return 180, "Last 6 Months"
+	end
+	if range == "9_months" then
+		return 270, "Last 9 Months"
+	end
+	if range == "1_year" or range == "year" then
+		return 365, "Last Year"
+	end
+	return 90, "Last 3 Months"
+end
+
+local function resolve_activity_source(source)
+	if source == "created" or source == "creation" or source == "birth" then
+		return "created"
+	end
+	if source == "both" or source == "all" then
+		return "both"
+	end
+	return "modified"
+end
+
+local function build_heatmap(vault_path, range_days, activity_source)
+	local today_start = day_start(os.time())
+	local start_ts = today_start - ((range_days - 1) * 86400)
+	local end_ts = today_start + 86399
+
+	local counts = {}
+	if activity_source == "both" then
+		local activity_cmd = "fd -e md . '" .. vault_path .. "' -X stat -f '%m\t%B'"
+		local activity_raw = vim.fn.system(activity_cmd)
+		for line in activity_raw:gmatch("[^\r\n]+") do
+			local mod_ts, birth_ts = line:match("^(%d+)%s+(%d+)")
+			local seen = {}
+			local function add_ts(ts)
+				local t = tonumber(ts)
+				if t and t > 0 and t >= start_ts and t <= end_ts then
+					local date_key = os.date("%Y-%m-%d", t)
+					if not seen[date_key] then
+						counts[date_key] = (counts[date_key] or 0) + 1
+						seen[date_key] = true
+					end
+				end
+			end
+			add_ts(mod_ts)
+			add_ts(birth_ts)
+		end
+	else
+		local stat_flag = activity_source == "created" and "%B" or "%m"
+		local activity_cmd = "fd -e md . '" .. vault_path .. "' -X stat -f '" .. stat_flag .. "'"
+		local activity_raw = vim.fn.system(activity_cmd)
+		for ts in activity_raw:gmatch("[^\r\n]+") do
+			local t = tonumber(ts)
+			if t and t >= start_ts and t <= end_ts then
+				local date_key = os.date("%Y-%m-%d", t)
+				counts[date_key] = (counts[date_key] or 0) + 1
+			end
+		end
+	end
+
+	local dates = {}
+	for i = 0, range_days - 1 do
+		local day_ts = start_ts + (i * 86400)
+		local dt = os.date("*t", day_ts)
+		local date_key = os.date("%Y-%m-%d", day_ts)
+		table.insert(dates, { key = date_key, wday = dt.wday })
+	end
+
+	local columns = {}
+	local current_col = { nil, nil, nil, nil, nil, nil, nil }
+	table.insert(columns, current_col)
+	for i, date in ipairs(dates) do
+		if i > 1 and date.wday == 1 then
+			current_col = { nil, nil, nil, nil, nil, nil, nil }
+			table.insert(columns, current_col)
+		end
+		current_col[date.wday] = { count = counts[date.key] or 0, date = date.key }
+	end
+
+	local max_count = 0
+	for _, value in pairs(counts) do
+		if value > max_count then
+			max_count = value
+		end
+	end
+
+	local lines = {}
+	local highlights = {}
+	local row_labels = { [2] = "Mon", [4] = "Wed", [6] = "Fri" }
+	local month_prefix = "     "
+	local month_line = month_prefix .. string.rep(" ", #columns * 2)
+	local month_chars = {}
+	for i = 1, #month_line do
+		month_chars[i] = month_line:sub(i, i)
+	end
+
+	for col_index, column in ipairs(columns) do
+		local month_label
+		for row = 1, 7 do
+			local cell = column[row]
+			if cell and cell.date then
+				local y, m, d = cell.date:match("(%d+)-(%d+)-(%d+)")
+				if tonumber(d) == 1 then
+					month_label = os.date("%b", os.time({ year = tonumber(y), month = tonumber(m), day = 1 }))
+					break
+				end
+			end
+		end
+
+		if month_label then
+			local start_pos = #month_prefix + ((col_index - 1) * 2) + 1
+			for i = 1, #month_label do
+				local pos = start_pos + i - 1
+				if pos <= #month_chars then
+					month_chars[pos] = month_label:sub(i, i)
+				end
+			end
+		end
+	end
+
+	month_line = table.concat(month_chars)
+	table.insert(lines, month_line)
+
+	for row = 1, 7 do
+		local label = row_labels[row] or ""
+		local line = string.format(" %-3s ", label)
+		for _, column in ipairs(columns) do
+			local value = column[row]
+			if value == nil then
+				line = line .. "  "
+			else
+				local level = 0
+				if value.count > 0 and max_count > 0 then
+					level = math.ceil((value.count / max_count) * HEATMAP_LEVELS)
+					if level < 1 then
+						level = 1
+					elseif level > HEATMAP_LEVELS then
+						level = HEATMAP_LEVELS
+					end
+				end
+				local start_col = #line
+				line = line .. HEATMAP_CHAR .. " "
+				table.insert(highlights, {
+					row = row + 1,
+					col = start_col,
+					group = HEATMAP_GROUP_PREFIX .. level,
+				})
+			end
+		end
+		table.insert(lines, line)
+	end
+
+	return lines, highlights
 end
 
 function M.show_stats()
 	-- Path to your vault
 	local vault_path = vim.fn.expand(M.config.vault_path)
 	local sections = M.config.sections
+	local heatmap_config = M.config.heatmap or {}
 
 	-- Ensure vault path exists
 	if vim.fn.isdirectory(vault_path) == 0 then
@@ -98,79 +283,8 @@ function M.show_stats()
 		end
 	end
 
-	-- 3c. Weekly Activity (Last 7 Days)
-	-- NOTE: We use file *birth* time (`stat -f '%B'`) here to approximate when notes were
-	-- "created". This reflects when the file appeared on the local filesystem, which may
-	-- differ from when the note was originally created in Obsidian (for example, if notes
-	-- are copied, synced from another device, restored from backup, or the vault is moved).
-	-- We prefer birth time over modification time so that later edits do not count as new
-	-- note creations, but this trade-off means the weekly activity chart can be inaccurate
-	-- in the above scenarios.
-	local activity_cmd = "fd -e md . '" .. vault_path .. "' -X stat -f '%B'"
-	local activity_raw = vim.fn.system(activity_cmd)
-
-	local day_stats = {}
-	local today_ts = os.time()
-	local max_count = 0
-
-	-- Initialize last 7 days
-	for i = 6, 0, -1 do
-		local d = today_ts - (i * 86400)
-		local date_key = os.date("%Y-%m-%d", d)
-		local label = os.date("%a", d):sub(1, 1)
-		table.insert(day_stats, { date = date_key, label = label, count = 0 })
-	end
-
-	-- Populate counts
-	for ts in activity_raw:gmatch("[^\r\n]+") do
-		local t = tonumber(ts)
-		if t then
-			local date_str = os.date("%Y-%m-%d", t)
-			for _, day in ipairs(day_stats) do
-				if day.date == date_str then
-					day.count = day.count + 1
-					if day.count > max_count then
-						max_count = day.count
-					end
-					break
-				end
-			end
-		end
-	end
-
-	-- Generate Chart (Fixed height of 5 lines)
-	local graph_height = 5
-	local chart_lines = {}
-	for h = graph_height, 1, -1 do
-		local line = "    "
-		for _, day in ipairs(day_stats) do
-			local bar_height = 0
-			if max_count > 0 then
-				if max_count <= graph_height then
-					bar_height = day.count
-				else
-					bar_height = round((day.count / max_count) * graph_height)
-					-- Ensure at least 1 block if count > 0
-					if day.count > 0 and bar_height == 0 then
-						bar_height = 1
-					end
-				end
-			end
-
-			if bar_height >= h then
-				line = line .. "█ "
-			else
-				line = line .. "  " -- space for alignment
-			end
-		end
-		table.insert(chart_lines, line)
-	end
-
-	-- X-axis labels
-	local x_axis = "    "
-	for _, day in ipairs(day_stats) do
-		x_axis = x_axis .. day.label .. " "
-	end
+	local heatmap_start_index
+	local heatmap_highlights
 
 	-- 4. Top 3 Tags (Stripping file paths to prevent window overflow)
 	local tag_cmd = string.format(
@@ -207,16 +321,27 @@ function M.show_stats()
 		table.insert(stats, " 󱓞  Current Streak:  " .. streak .. " days")
 	end
 
-	if sections.weekly_chart then
+	local show_heatmap = sections.heatmap
+	if show_heatmap == nil then
+		show_heatmap = sections.weekly_chart
+	end
+
+	if show_heatmap then
+		local range_days, range_label = resolve_heatmap_days(heatmap_config.range, heatmap_config.days)
+		local activity_source = resolve_activity_source(heatmap_config.activity)
+
+		ensure_heatmap_highlights()
+		local heatmap_lines, highlights = build_heatmap(vault_path, range_days, activity_source)
+
 		if stats[#stats] ~= separator then
 			table.insert(stats, "")
 		end
-		table.insert(stats, "   Weekly Activity:")
-
-		for _, line in ipairs(chart_lines) do
+		table.insert(stats, "   Contribution Heatmap (" .. range_label .. "):")
+		heatmap_start_index = #stats + 1
+		for _, line in ipairs(heatmap_lines) do
 			table.insert(stats, line)
 		end
-		table.insert(stats, x_axis)
+		heatmap_highlights = highlights
 	end
 
 	if sections.tags then
@@ -267,6 +392,18 @@ function M.show_stats()
 
 	popup:mount()
 	vim.api.nvim_buf_set_lines(popup.bufnr, 0, -1, false, stats)
+	if heatmap_start_index and heatmap_highlights then
+		for _, highlight in ipairs(heatmap_highlights) do
+			vim.api.nvim_buf_add_highlight(
+				popup.bufnr,
+				-1,
+				highlight.group,
+				heatmap_start_index + highlight.row - 1,
+				highlight.col,
+				highlight.col + #HEATMAP_CHAR
+			)
+		end
+	end
 	vim.api.nvim_buf_set_option(popup.bufnr, "modifiable", false)
 	vim.api.nvim_buf_set_option(popup.bufnr, "bufhidden", "wipe")
 

@@ -11,6 +11,7 @@ A simple Neovim plugin to display statistics for your Obsidian vault.
 - Days Active (based on oldest file creation)
 - Velocity (notes per day)
 - Current Writing Streak
+- Contribution Heatmap (last 2 months or year)
 - Top 3 Tags
 
 ## Requirements
@@ -52,5 +53,13 @@ Default configuration:
 ```lua
 require("obsidian-stats").setup({
   vault_path = "~/vaults/second-brain",
+  heatmap = {
+    range = "3_months", -- or "6_months", "9_months", "1_year"
+    activity = "modified", -- or "created" or "both"
+  },
+  sections = {
+    weekly_chart = true, -- legacy toggle for the heatmap
+    -- heatmap = true, -- optional explicit toggle (overrides weekly_chart)
+  },
 })
 ```

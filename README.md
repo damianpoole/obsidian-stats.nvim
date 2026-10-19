@@ -71,6 +71,8 @@ pending scan and refreshes the popup. `fd` discovers Markdown files using its
 normal hidden-file and ignore rules; all statistics, including tags, are computed
 from those same notes. Attachments and other non-Markdown files do not contribute.
 Vault paths and filenames are passed literally, including spaces and quotes.
+Symlinked Markdown files are included using their target content and timestamps.
+Directory symlinks are not traversed; broken links and non-file targets are skipped.
 
 Neovim's filesystem API supplies timestamps on both macOS and Linux; no shell,
 BSD `stat`, `wc`, `awk`, or `rg` pipelines are used. Where a filesystem does not

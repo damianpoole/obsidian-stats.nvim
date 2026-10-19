@@ -32,7 +32,7 @@ function M.scan(vault_path, callback)
 	end
 
 	local output, stderr = "", ""
-	job = vim.fn.jobstart({ executable, "--type", "f", "--extension", "md", "--print0", ".", vault_path }, {
+	job = vim.fn.jobstart({ executable, "--type", "f", "--type", "l", "--extension", "md", "--print0", ".", vault_path }, {
 		stdout_buffered = true,
 		stderr_buffered = true,
 		on_stdout = function(_, data)

@@ -76,6 +76,25 @@ local function run()
 		eq(nil, uv.fs_stat("INJECTED"))
 	end)
 
+	test("symlinked Markdown notes count while broken/directory links are skipped", function()
+		local path = root .. "/symlinks"
+		local directory = root .. "/external-directory"
+		vim.fn.mkdir(path, "p")
+		vim.fn.mkdir(directory, "p")
+		write(path .. "/regular.md", "regular #local")
+		write(root .. "/external-note.txt", "linked note #linked")
+		write(directory .. "/child.md", "not traversed #directory")
+		assert(uv.fs_symlink(root .. "/external-note.txt", path .. "/linked.md"))
+		assert(uv.fs_symlink(root .. "/missing.md", path .. "/broken.md"))
+		assert(uv.fs_symlink(directory, path .. "/directory.md"))
+		local err, result = scan(path)
+		assert(not err, err)
+		eq(2, #result.notes)
+		eq(5, result.total_words)
+		eq({ ["#linked"] = 1, ["#local"] = 1 }, result.tags)
+		eq(2, result.skipped)
+	end)
+
 	test("chunk boundaries preserve words and tags", function()
 		local path = root .. "/chunks"
 		vim.fn.mkdir(path, "p")
